@@ -11,6 +11,7 @@ let days = 7, visibleCount = PAGE_SIZE, activeView = 'capture', trash = null;
 let recorder, recordingStream, recognition, mediaBusy = false, saving = false;
 let recordTimer, draftTimer, toastTimer, draftQueue = Promise.resolve(), draftDirty = false;
 let channel;
+let pendingImport = null, importBusy = false;
 
 function toast(message) {
   $('#toast').textContent = message;
@@ -145,6 +146,7 @@ async function refresh() {
   const state = await readAll(db);
   logs = state.logs.sort((a, b) => new Date(b.date) - new Date(a.date));
   trash = state.trash || null;
+  $('#transfer-notice').hidden = logs.length > 0;
   logs.forEach(log => rememberTags(log.tags));
   render();
   return state;
@@ -340,17 +342,60 @@ $('#export').onclick = async () => {
   } catch (error) { toast(error.message || '백업을 만들지 못했어요.'); }
   finally { $('#export').disabled = false; }
 };
+$('#transfer-guide').onclick = () => {
+  view('settings', true);
+  $('#import').focus();
+};
+function clearImport() {
+  pendingImport = null;
+  $('#import').value = '';
+  $('#import-preview').hidden = true;
+}
+$('#cancel-import').onclick = () => { if (!importBusy) clearImport(); };
 $('#import').onchange = async event => {
-  const file = event.target.files[0]; if (!file || !db) return;
+  const file = event.target.files[0];
+  pendingImport = null;
+  $('#import-preview').hidden = true;
+  $('#transfer-result').textContent = '';
+  if (!file || !db) return;
   $('#import').disabled = true;
   try {
     if (file.size > BACKUP_LIMIT) throw Error('100MB 이하의 백업을 선택하세요.');
     const imported = validateBackup(JSON.parse(await file.text()));
+    const {logs: current} = await readAll(db);
+    const ids = new Set(current.map(log => log.id));
+    const duplicates = imported.filter(log => ids.has(log.id)).length;
+    pendingImport = imported;
+    $('#import-summary').textContent = `${file.name} · 기록 ${imported.length}개 · 음성 포함 ${imported.filter(log => log.audio).length}개 · 새로 추가할 기록 ${imported.length - duplicates}개 · 중복 ${duplicates}개`;
+    $('#confirm-import').disabled = imported.length === 0;
+    $('#import-preview').hidden = false;
+  } catch (error) {
+    clearImport();
+    $('#transfer-result').textContent = error instanceof SyntaxError ? '올바른 JSON 파일이 아닙니다. 기존 기록은 변경하지 않았습니다.' : error.message || '백업을 읽지 못했어요.';
+  } finally { $('#import').disabled = false; }
+};
+$('#confirm-import').onclick = async () => {
+  if (!pendingImport || !db || importBusy) return;
+  const imported = pendingImport;
+  importBusy = true;
+  $('#import').disabled = true;
+  $('#confirm-import').disabled = true;
+  $('#cancel-import').disabled = true;
+  try {
     const added = await mergeLogs(db, imported);
-    await refresh(); renderTags(); broadcast();
-    toast(`${added}개 추가 · ${imported.length - added}개 중복 유지`);
-  } catch (error) { toast(error instanceof SyntaxError ? '올바른 JSON 파일이 아닙니다.' : error.message || '가져오지 못했어요.'); }
-  finally { $('#import').disabled = false; $('#import').value = ''; }
+    clearImport();
+    broadcast();
+    $('#transfer-result').textContent = `이전 완료: ${added}개 추가 · ${imported.length - added}개 중복 유지. 실험실 노트에서 기록과 음성을 확인하세요.`;
+    await refresh(); renderTags();
+    toast('기록을 가져왔어요. 실험실 노트에서 확인하세요.');
+  } catch (error) {
+    $('#transfer-result').textContent = error.message || '가져오지 못했어요. 백업 파일을 보관하고 다시 시도하세요.';
+  } finally {
+    importBusy = false;
+    $('#import').disabled = false;
+    $('#confirm-import').disabled = !pendingImport?.length;
+    $('#cancel-import').disabled = false;
+  }
 };
 
 let installPrompt;
@@ -380,6 +425,7 @@ try {
   connection();
 } catch (error) {
   lockForm(true); $('#export').disabled = true; $('#import').disabled = true;
+  $('#transfer-guide').disabled = true;
   $('#storage-error').hidden = false;
   $('#storage-error').textContent = error.message || '기기 저장소를 열 수 없어요. 브라우저 저장 권한을 확인하고 다시 접속하세요.';
   $('#status').textContent = '● 저장소 사용 불가';
@@ -390,7 +436,7 @@ if ('serviceWorker' in navigator) {
   try {
     const registration = await navigator.serviceWorker.register('./sw.js', {updateViaCache: 'none'});
     const ready = await navigator.serviceWorker.ready;
-    const cacheReady = await caches.has(`bug-book-shell:${ready.scope}:v3`);
+    const cacheReady = await caches.has(`bug-book-shell:${ready.scope}:v4`);
     $('#offline').textContent = cacheReady ? '✓ 오프라인 준비 완료 · 인터넷 없이 기록할 수 있어요.' : '앱 업데이트 준비 중입니다. 모든 버그 북 창을 닫고 다시 열어 주세요.';
     function notifyUpdate() {
       if (registration.waiting) { $('#update-panel').hidden = false; $('#offline').textContent = '새 버전이 준비되었습니다. 초안은 자동 보관됩니다. 모든 버그 북 창을 닫고 다시 열어 적용하세요.'; }

@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 const source=await readFile(new URL('../sw.js',import.meta.url),'utf8');
 function harness(scope='https://example.github.io/bug-book/') {
   const handlers={},deleted=[],matches=[],network=[],assets=[];
-  const current=`bug-book-shell:${scope}:v3`;
+  const current=`bug-book-shell:${scope}:v4`;
   const cache={addAll:async requests=>assets.push(...requests),match:async url=>{matches.push(String(url));return {cached:String(url)}}};
   const caches={open:async()=>cache,keys:async()=>[current,`bug-book-shell:${scope}:v1`,'bug-book-shell:https://example.github.io/other/:v1','unrelated'],delete:async name=>deleted.push(name)};
   const self={registration:{scope},location:{origin:'https://example.github.io'},clients:{claim:async()=>{}},addEventListener:(name,handler)=>{handlers[name]=handler}};

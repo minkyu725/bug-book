@@ -1,7 +1,7 @@
 // A single versioned shell prevents new HTML loading old cached modules.
 // Scope-qualified cache names isolate multiple Pages projects on the same origin.
 const PREFIX = `bug-book-shell:${self.registration.scope}:`;
-const CACHE = PREFIX + 'v3';
+const CACHE = PREFIX + 'v4';
 const ASSETS = ['./index.html', './style.css', './app.js', './core.js', './storage.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 const assetURLs = new Set(ASSETS.map(path => new URL(path, self.registration.scope).href));
 
