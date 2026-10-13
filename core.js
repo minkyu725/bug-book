@@ -1,5 +1,5 @@
 export const TAGS = ['회의', '집중 작업', '사람과 대화', '혼자 있는 시간', '운동', '이동', '휴식', '새로운 도전'];
-export const ENERGY = {'1': '급충전', '0': '평온함', '-1': '급방전'};
+export const ENERGY = {'1': '충전', '0': '평온', '-1': '방전'};
 export const BACKUP_LIMIT = 100 * 1024 * 1024;
 export const emotional = text => /짜증|힘들|힘든|최악|무능|자책|왜 이럴|싫어|싫다|우울|망했|한심/.test(text);
 export const summarize = text => text.trim().split(/(?<=[.!?。])\s+|\n/)[0]?.slice(0, 160) || '';
