@@ -1,3 +1,4 @@
+import {validateReflection} from './reflection-core.js';
 export const TAGS = ['회의', '집중 작업', '사람과 대화', '혼자 있는 시간', '운동', '이동', '휴식', '새로운 도전'];
 export const ENERGY = {'1': '충전', '0': '평온', '-1': '방전'};
 export const BACKUP_LIMIT = 100 * 1024 * 1024;
@@ -49,8 +50,9 @@ export function validateBackup(data) {
       ['context', 'raw', 'trigger', 'hypothesis'].some(key => typeof log[key] !== 'string' || log[key].length > 5000) || !validAudio) {
       throw Error('백업에 잘못된 기록이 있습니다. 기존 기록은 변경하지 않았습니다.');
     }
+    if (log.reflection !== undefined && !validateReflection(log.reflection)) throw Error('잘못된 자기이해 기록입니다. 기존 기록은 변경하지 않았습니다.');
     ids.add(log.id);
     return {id: log.id, date: log.date, energy: log.energy, tags: [...new Set(log.tags.map(tag => tag.trim()))],
-      context: log.context, raw: log.raw, trigger: log.trigger, hypothesis: log.hypothesis, audio: log.audio};
+      context: log.context, raw: log.raw, trigger: log.trigger, hypothesis: log.hypothesis, audio: log.audio, ...(log.reflection !== undefined ? {reflection: structuredClone(log.reflection)} : {})};
   });
 }

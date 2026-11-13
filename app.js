@@ -1,4 +1,5 @@
 import {TAGS, ENERGY, BACKUP_LIMIT, emotional, summarize, hasDraft, inPeriod, rankings, daySummary, filterLogs, validateBackup} from './core.js';
+import {initReflections} from './reflection-ui.js';
 import {openDatabase, readAll, writeDraft, saveLog, removeLog, undoDelete, mergeLogs} from './storage.js';
 
 const $ = selector => document.querySelector(selector);
@@ -19,6 +20,8 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 6000);
 }
+
+const reflections = initReflections({getDB: () => db, onOpen: () => view('reflection', true), onChange: () => { broadcast(); refresh().catch(() => toast('기록을 새로 읽지 못했어요.')); }, toast});
 
 function snapshot() {
   return {energy, tags: [...tags], audio, editing,
@@ -128,13 +131,14 @@ fields.forEach(key => { $('#' + key).addEventListener('input', () => {
 $('#discard').onclick = () => { setAudio(null); changed(); };
 
 function view(name, scroll = false) {
-  if (!['capture', 'logs', 'report', 'settings'].includes(name)) name = 'capture';
+  if (!['capture', 'reflection', 'logs', 'report', 'settings'].includes(name)) name = 'capture';
   activeView = name;
   $$('.view').forEach(section => { section.hidden = section.id !== name; });
   $$('[data-view]').forEach(button => {
     button.classList.toggle('active', button.dataset.view === name);
     if (button.dataset.view === name) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
+  reflections.showDue();
   if (location.hash !== '#' + name) location.hash = name;
   render();
   if (scroll) window.scrollTo({top: 0, behavior: 'instant'});
@@ -144,11 +148,12 @@ window.addEventListener('hashchange', () => view(location.hash.slice(1)));
 
 async function refresh() {
   const state = await readAll(db);
-  logs = state.logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+  logs = state.logs.filter(log => !log.reflection).sort((a, b) => new Date(b.date) - new Date(a.date));
   trash = state.trash || null;
-  $('#transfer-notice').hidden = logs.length > 0;
+  $('#transfer-notice').hidden = state.logs.length > 0;
   logs.forEach(log => rememberTags(log.tags));
   render();
+  await reflections.refresh();
   return state;
 }
 function broadcast() { channel?.postMessage('changed'); }
@@ -416,6 +421,7 @@ updateDate(); renderTags(); $('#save').disabled = true; $('#quick-save').disable
 try {
   db = await openDatabase();
   const state = await refresh();
+  await reflections.start();
   if (state.draft && hasDraft(state.draft)) { applyDraft(state.draft); updateDraftStatus('✓ 이전 초안을 복원했어요'); }
   $('#save').disabled = false; $('#quick-save').disabled = false;
   if ('BroadcastChannel' in window) {
@@ -436,7 +442,7 @@ if ('serviceWorker' in navigator) {
   try {
     const registration = await navigator.serviceWorker.register('./sw.js', {updateViaCache: 'none'});
     const ready = await navigator.serviceWorker.ready;
-    const cacheReady = await caches.has(`bug-book-shell:${ready.scope}:v4`);
+    const cacheReady = await caches.has(`bug-book-shell:${ready.scope}:v6`);
     $('#offline').textContent = cacheReady ? '✓ 오프라인 준비 완료 · 인터넷 없이 기록할 수 있어요.' : '앱 업데이트 준비 중입니다. 모든 버그 북 창을 닫고 다시 열어 주세요.';
     function notifyUpdate() {
       if (registration.waiting) { $('#update-panel').hidden = false; $('#offline').textContent = '새 버전이 준비되었습니다. 초안은 자동 보관됩니다. 모든 버그 북 창을 닫고 다시 열어 적용하세요.'; }

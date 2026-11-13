@@ -27,7 +27,7 @@ jobs:
       - name: Prepare static files
         run: |
           mkdir -p dist
-          cp index.html style.css app.js core.js storage.js sw.js manifest.webmanifest dist/
+          cp index.html style.css app.js core.js storage.js reflection-core.js reflection-ui.js sw.js manifest.webmanifest dist/
           cp -r icons dist/
       - uses: actions/upload-pages-artifact@v3
         with:
