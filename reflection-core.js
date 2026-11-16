@@ -31,6 +31,50 @@ export const OTHER_QUESTIONS = [
   {ids:'17', person:'오래된 친구·형제자매', question:'예전에는 좋아했는데 요즘 하지 않는 일 중 다시 해보면 좋겠는 게 있어?'},
   {ids:'20·21', person:'내가 이끌거나 협업했던 사람', question:'나와 일할 때 자발적으로 움직이고 싶었던 순간과 의욕이 줄었던 순간은 언제였어?'}
 ];
+export const FOCUSED_START = '2026-11-17';
+export const FOCUSED_ORDER = {morning:[2,4,13,16,17], evening:[3,5,7,11,20]};
+const focusedQuestions = {
+  "2": {
+    "question": "당신 안에는 어떤 인코딩(내면의 작동 방식)이 숨어 있는가? 당신을 잘 아는 사람들은 무엇을 당신의 인코딩이라고 생각하는가?",
+    "helper": ""
+  },
+  "4": {
+    "question": "프레임 안으로 더 깊이 들어가기 위해 무엇을 늘리고, 무엇을 줄여야 하는가?",
+    "helper": ""
+  },
+  "13": {
+    "question": "지금 안개 속에 있다면, 당신이 내디딜 수 있는 다음 한 걸음은 무엇인가? (아직 목적지를 모른다고 해도 괜찮다.)",
+    "helper": "오늘 10분 안에 직접 해보고 결과를 확인할 수 있는 행동은 무엇인가요?"
+  },
+  "16": {
+    "question": "당신은 확장과 회귀를 위해 무엇을 하고 있는가? 새로운 영역으로 경계를 넓히는 동시에, 이전의 경험과 역량으로 다시 돌아오고 있는가?",
+    "helper": "최근 새롭게 해본 일 하나와, 그때 꺼내 쓴 예전 경험 하나를 떠올려 보세요."
+  },
+  "17": {
+    "question": "삶의 앞선 시기에 심어두었지만, 지금은 잠들어 있는 씨앗은 무엇인가? 늘 관심은 있었지만, 삶이 다른 방향으로 흘러가며 결국 자라지 못한 씨앗이 있는가? 확장과 회귀를 위해 그 씨앗에 어떻게 다시 물을 줄 수 있을까?",
+    "helper": "예전에 자발적으로 시간과 노력을 썼던 활동을 떠올려 보세요. 지금 다시 작게 해본다면 무엇을 할 수 있을까요?"
+  },
+  "3": {
+    "question": "당신의 에너지 가운데 얼마나 많은 부분이 인코딩에 맞게 쓰이고 있는가?",
+    "helper": ""
+  },
+  "5": {
+    "question": "당신을 특히 유능하게 만드는 내면의 작동 방식은 무엇인가? 당신만의 독특한 방식이 존재하는가?",
+    "helper": "최근 누군가가 막혀 있던 일을 내가 풀어낸 장면은? 그때 내가 실제로 한 행동은?"
+  },
+  "7": {
+    "question": "어떤 활동을 할 때 내면의 불꽃이 강하게 일어나는가? 상당한 스트레스와 고된 노동의 '세금'을 치르더라도 기꺼이 하고 싶은 일은 무엇인가?",
+    "helper": "최근 힘들었지만 다시 하고 싶었던 활동은? 관심은 있었지만 직접 해보니 더 하고 싶지 않았던 활동도 있나요?"
+  },
+  "11": {
+    "question": "현재의 절벽, 혹은 과거의 절벽은 당신의 삶을 어떻게 재구성했는가? 그 과정에서 이전에는 보이지 않던 인코딩이 드러났는가?",
+    "helper": ""
+  },
+  "20": {
+    "question": "당신의 리더십 인코딩은 무엇인가? 그것은 사람들이 해야 할 일을 '하고 싶게 만드는' 데 어떻게 작용하는가?",
+    "helper": ""
+  }
+};
 const order = [2, 7, 5, 13, 17, 3, 1, 4, 6, 9, 10, 8, 11, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23];
 export function seoulDay(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit'}).format(date);
@@ -43,6 +87,12 @@ export function currentSlot(date = new Date()) {
 }
 export function questionFor(day, slot) {
   const index = Math.floor(Date.parse(day + 'T00:00:00Z') / 86400000);
+  if (day >= FOCUSED_START) {
+    const offset = index - Math.floor(Date.parse(FOCUSED_START + 'T00:00:00Z') / 86400000);
+    const id = FOCUSED_ORDER[slot][offset % 5], q = QUESTIONS.find(item => item.id === id);
+    const focused = focusedQuestions[id];
+    return {questionId:id, theme:q.theme, question:focused.question, context:[focused.helper, '오늘 또는 최근의 구체적인 장면 하나를 근거로 적어주세요. 떠오르지 않으면 ‘아직 관찰하지 못함’이라고 남겨도 괜찮아요.'].filter(Boolean).join(' ')};
+  }
   const id = order[((index * 2 + (slot === 'evening' ? 1 : 0)) % order.length + order.length) % order.length];
   const q = QUESTIONS.find(item => item.id === id);
   const context = ['최근 일주일의 구체적인 장면을 떠올려 보세요.', '일이나 공부뿐 아니라 관계와 휴식에서도 찾아보세요.', '누구와 있었고 어떤 조건이었는지도 떠올려 보세요.'][Math.floor(index / 23) % 3];

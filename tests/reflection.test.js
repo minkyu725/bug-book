@@ -16,13 +16,26 @@ test('23개 질문을 순환하며 하루 두 질문이 다르고 같은 날짜�
   assert.equal(QUESTIONS.length, 23);
   const ids = new Set();
   for (let i=0;i<23;i++) {
-    const day = new Date(Date.UTC(2026,10,1+i)).toISOString().slice(0,10);
+    const day = new Date(Date.UTC(2026,9,1+i)).toISOString().slice(0,10);
     const am = questionFor(day, 'morning'), pm = questionFor(day, 'evening');
     assert.notEqual(am.questionId, pm.questionId);
     assert.deepEqual(am, questionFor(day,'morning'));
     ids.add(am.questionId); ids.add(pm.questionId);
   }
   assert.equal(ids.size,23);
+});
+test('11월 17일부터 선정한 원문 질문을 오전·오후 5일 주기로 순환한다', () => {
+  const morning = [2,4,13,16,17], evening = [3,5,7,11,20];
+  for (let i=0;i<15;i++) {
+    const day = new Date(Date.UTC(2026,10,17+i)).toISOString().slice(0,10);
+    assert.equal(questionFor(day,'morning').questionId,morning[i%5]);
+    assert.equal(questionFor(day,'evening').questionId,evening[i%5]);
+  }
+  assert.equal(questionFor('2026-11-17','morning').question, '당신 안에는 어떤 인코딩(내면의 작동 방식)이 숨어 있는가? 당신을 잘 아는 사람들은 무엇을 당신의 인코딩이라고 생각하는가?');
+  assert.match(questionFor('2026-11-18','evening').context,/막혀 있던 일을/);
+  assert.match(questionFor('2026-11-19','evening').context,/다시 하고 싶었던/);
+  assert.equal(dueReflection([],new Date('2026-11-17T00:30:00Z')).questionId,2);
+  assert.equal(dueReflection([],new Date('2026-11-17T10:30:00Z')).questionId,3);
 });
 test('회고는 저장된 답변만 날짜순으로 7개씩 묶고 피드백·회고는 세지 않는다', () => {
   const records = Array.from({length:15},(_,i)=>answer(i)).reverse();
