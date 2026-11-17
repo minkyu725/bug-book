@@ -1,14 +1,15 @@
 import {readAll, transaction, readReflectionDrafts, saveReflectionAnswer} from './storage.js';
-import {OTHER_QUESTIONS, questionFor, seoulDay, reflectionDay, currentSlot, reflectionGroups, dueReflection} from './reflection-core.js';
+import {OTHER_QUESTIONS, choiceQuestions, choiceStats, questionFor, seoulDay, reflectionDay, currentSlot, reflectionGroups, dueReflection} from './reflection-core.js';
 
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 export function initReflections({getDB, onChange, onOpen, toast}) {
   const $ = selector => document.querySelector(selector);
   let records = [], slot = currentSlot(), selectedDay = reflectionDay(), busy = false, followsClock = true;
   let draftQueue = Promise.resolve(), draftTimer, clockDay = reflectionDay();
+  const selections = new Map();
   const drafts = new Map(), dirtyDrafts = new Set();
   const key = () => `${selectedDay}:${slot}`;
-  const question = () => answerFor()?.reflection || drafts.get(key())?.question || questionFor(selectedDay, slot);
+  const question = () => selections.get(key()) || drafts.get(key())?.question || answerFor()?.reflection || (drafts.get(key())?.text ? questionFor(selectedDay, slot) : null);
   const answerFor = () => records.find(log => log.reflection?.type === 'answer' && log.reflection.day === selectedDay && log.reflection.slot === slot);
   async function read() {
     const db = getDB();
@@ -22,16 +23,17 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     showDue();
     $('#reflection-new-day').hidden = selectedDay === reflectionDay();
     const answer = answerFor(), q = question();
-    $('#reflection-form').hidden = false;
+    renderChoices(q);
+    $('#reflection-form').hidden = !q;
     $('#reflection-waiting').hidden = true;
     $('#reflection-date').textContent = `${selectedDay} · 한국 시간`;
     document.querySelectorAll('[data-slot]').forEach(button => {
       button.classList.toggle('selected', button.dataset.slot === slot);
       button.setAttribute('aria-pressed', String(button.dataset.slot === slot));
     });
-    $('#reflection-question').textContent = q.question;
+    $('#reflection-question').textContent = q?.question || '오늘 답할 질문을 선택해 주세요.';
     $('#reflection-source').hidden = false;
-    $('#reflection-source').textContent = `질문 ${q.questionId} · ${answer?.tags[0] || q.theme} · ${q.context || '이전에 남긴 답변을 수정할 수 있어요.'}`;
+    $('#reflection-source').textContent = `질문 ${q?.questionId || '선택 전'} · ${answer?.tags[0] || q?.theme || '자기이해'} · ${q?.context || '이전에 남긴 답변을 수정할 수 있어요.'}`;
     if (forceAnswer || document.activeElement !== $('#reflection-answer')) $('#reflection-answer').value = drafts.get(key())?.text ?? answer?.raw ?? '';
     $('#reflection-save').textContent = answer ? '답변 수정 저장' : '답변 저장';
     $('#reflection-save').disabled = !getDB();
@@ -39,6 +41,23 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     $('#reflection-progress').textContent = `답변 ${answers.length}개 · 다음 회고까지 ${7 - answers.length % 7}개. 건너뛴 날은 채우지 않아도 괜찮아요.`;
     renderDrafts(); renderReviews(); renderHistory();
   }
+  function renderChoices(selected) {
+    const stats = choiceStats(records, slot);
+    $('#reflection-choices').innerHTML = stats.map(q => `<label class="reflection-choice"><input type="radio" name="reflection-choice" value="${q.questionId}" ${selected?.questionId === q.questionId ? 'checked' : ''} ${busy ? 'disabled' : ''}><span><strong>${q.questionId}번 · ${escapeHTML(q.theme)}</strong><span class="choice-text">${escapeHTML(q.question)}</span><span class="choice-stats"><progress max="100" value="${q.percent}" aria-label="${q.questionId}번 답변 비중"></progress><small>${q.count ? `${q.count}회 · ${q.percent}%` : '아직 답변 없음'}</small></span></span></label>`).join('');
+    $('#reflection-choice-hint').textContent = `${slot === 'morning' ? '오전' : '오후'} 7개 중 하나를 선택하세요. 비중은 선택형으로 저장한 이 시간대 답변을 기준으로 하며, 수정은 횟수를 늘리지 않아요.`;
+  }
+  $('#reflection-choices').onchange = async event => {
+    const q = choiceQuestions(slot).find(q => q.questionId === Number(event.target.value));
+    if (!q || busy) return;
+    if (question()?.questionId === q.questionId) return;
+    if ($('#reflection-answer').value.trim() && !confirm('질문을 바꾸면 이 시간대의 답변 내용을 새로 작성하게 됩니다. 저장된 답변은 새 답변을 저장하기 전까지 유지됩니다. 질문을 바꿀까요?')) { renderChoices(question()); return; }
+    await persistDraft();
+    selections.set(key(), q);
+    drafts.set(key(), {text:'', question:q, updatedAt:new Date().toISOString()});
+    dirtyDrafts.add(key());
+    // An empty draft still carries the selected question during this session.
+    render(true);
+  };
   function renderDrafts() {
     const pending = [...drafts.entries()].filter(([draftKey, draft]) => draft.text.trim() && !records.some(log => log.reflection?.type === 'answer' && `${log.reflection.day}:${log.reflection.slot}` === draftKey && log.raw === draft.text.trim()))
       .sort((a,b) => Date.parse(b[1].updatedAt) - Date.parse(a[1].updatedAt));
@@ -104,12 +123,13 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   $('#reflection-form').onsubmit = async event => {
     event.preventDefault();
     const raw = $('#reflection-answer').value.trim();
-    if (!raw || busy) return;
+    if (!raw || busy || !question()) return;
     const existing = answerFor(), q = question();
     await persistDraft();
-    const saved = await write(logFor({id:existing?.id || `reflection:${selectedDay}:${slot}`, date:existing?.date, raw, context:q.question, theme:existing?.tags[0] || q.theme,
-      reflection:{type:'answer', day:selectedDay, slot, questionId:q.questionId, question:q.question}}));
+    const saved = await write(logFor({id:existing?.id || `reflection:${selectedDay}:${slot}`, date:existing?.date, raw, context:q.question, theme:q.theme || existing?.tags[0],
+      reflection:{type:'answer', day:selectedDay, slot, questionId:q.questionId, question:q.question, ...((selections.has(key()) || !existing || existing.reflection.choiceVersion === 1) ? {choiceVersion:1} : {})}}));
     if (saved) {
+      selections.delete(key());
       drafts.delete(key());
       dirtyDrafts.delete(key());
       onChange();

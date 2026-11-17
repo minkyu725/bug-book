@@ -73,8 +73,37 @@ const focusedQuestions = {
   "20": {
     "question": "당신의 리더십 인코딩은 무엇인가? 그것은 사람들이 해야 할 일을 '하고 싶게 만드는' 데 어떻게 작용하는가?",
     "helper": ""
+  },
+  "1": {
+    "question": "\"나는 무엇보다 X한 삶을 원한다.\"라는 문장의 X 자리에 한 단어를 넣어보자.",
+    "helper": ""
+  },
+  "12": {
+    "question": "다가오는 절벽이 보이는가? 그렇다면 안개의 일부를 미리 걷어내기 위해 지금 무엇을 할 수 있는가? 절벽이 오기 전에 내디딜 수 있는 단계적 발걸음은 무엇인가?",
+    "helper": ""
+  },
+  "15": {
+    "question": "주어진 운 속에서 당신은 얼마나 좋은 결과를 만들어냈는가? (상황의 운, 사람의 운, 시대의 운을 포함해서 말이다.) 앞으로 더 나은 결과를 만들어내려면 무엇이 필요한가?",
+    "helper": ""
+  },
+  "22": {
+    "question": "이 연구 속 인물들 가운데 누구에게 가장 마음이 끌렸는가? 어떤 삶과 이야기가 가장 깊이 와닿았으며, 그 이유는 무엇인가? / 이 책을 읽으며 흔들리거나 뒤집힌 삶의 믿음은 무엇인가?",
+    "helper": ""
   }
 };
+export const CHOICE_POOLS = {morning:[1,2,4,12,13,16,17], evening:[3,5,7,11,15,20,22]};
+export function choiceQuestions(slot) {
+  return CHOICE_POOLS[slot].map(id => ({questionId:id, theme:QUESTIONS.find(q => q.id === id).theme,
+    question:focusedQuestions[id].question,
+    context:[focusedQuestions[id].helper, '오늘 또는 최근의 구체적인 장면 하나를 근거로 적어주세요. 떠오르지 않으면 ‘아직 관찰하지 못함’이라고 남겨도 괜찮아요.'].filter(Boolean).join(' ')}));
+}
+export function choiceStats(logs, slot) {
+  const answers = logs.filter(log => log.reflection?.type === 'answer' && log.reflection.choiceVersion === 1 && log.reflection.slot === slot && CHOICE_POOLS[slot].includes(log.reflection.questionId));
+  return choiceQuestions(slot).map(q => {
+    const count = answers.filter(log => log.reflection.questionId === q.questionId).length;
+    return {...q, count, percent:answers.length ? Math.round(count / answers.length * 100) : 0};
+  });
+}
 const order = [2, 7, 5, 13, 17, 3, 1, 4, 6, 9, 10, 8, 11, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23];
 export function seoulDay(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit'}).format(date);
@@ -106,7 +135,7 @@ export function questionFor(day, slot) {
 export function dueReflection(logs, date = new Date()) {
   const slot = currentSlot(date), day = reflectionDay(date);
   if (!slot || logs.some(log => log.reflection?.type === 'answer' && log.reflection.day === day && log.reflection.slot === slot)) return null;
-  return {day, slot, ...questionFor(day, slot)};
+  return {day, slot, ...questionFor(day, slot), question:'7개 질문 중 오늘 답하고 싶은 질문 하나를 선택해 주세요.'};
 }
 export function reflectionGroups(logs) {
   const answers = logs.filter(log => log.reflection?.type === 'answer').sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));

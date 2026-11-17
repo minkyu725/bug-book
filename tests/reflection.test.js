@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {IDBFactory} from 'fake-indexeddb';
-import {QUESTIONS, seoulDay, reflectionDay, currentSlot, questionFor, reflectionGroups, validateReflection, dueReflection} from '../reflection-core.js';
+import {CHOICE_POOLS, choiceQuestions, choiceStats, QUESTIONS, seoulDay, reflectionDay, currentSlot, questionFor, reflectionGroups, validateReflection, dueReflection} from '../reflection-core.js';
 import {validateBackup} from '../core.js';
 import {openDatabase, transaction, readAll, mergeLogs, writeDraft} from '../storage.js';
 
@@ -90,4 +90,18 @@ test('답한 질문은 다시 안내하지 않으며 저녁에는 최신 질문�
   assert.equal(dueReflection([evening], new Date('2026-11-13T11:00:00Z')), null);
   assert.equal(dueReflection([morning,evening], new Date('2026-11-14T01:00:00Z')).day, '2026-11-14');
   assert.equal(dueReflection([], new Date('2026-11-14T00:00:00Z')).day, '2026-11-14');
+});
+
+test('선택형 14개 문구와 시간대별 비중은 기존 기록과 분리된다', () => {
+  assert.deepEqual(CHOICE_POOLS.morning,[1,2,4,12,13,16,17]);
+  assert.deepEqual(CHOICE_POOLS.evening,[3,5,7,11,15,20,22]);
+  assert.equal(new Set([...CHOICE_POOLS.morning,...CHOICE_POOLS.evening]).size,14);
+  for (const slot of ['morning','evening']) assert.equal(choiceQuestions(slot).length,7);
+  const chosen=(id,slot)=>({...answer(),reflection:{...answer().reflection,questionId:id,slot,choiceVersion:1}});
+  const logs=[answer(),chosen(2,'morning'),chosen(2,'morning'),chosen(1,'morning'),chosen(7,'evening')];
+  assert.equal(choiceStats(logs,'morning').find(q=>q.questionId===2).percent,67);
+  assert.equal(choiceStats(logs,'morning').find(q=>q.questionId===2).count,2);
+  assert.equal(choiceStats(logs,'evening').find(q=>q.questionId===7).percent,100);
+  assert.ok(choiceStats([],'morning').every(q=>q.count===0 && q.percent===0));
+  assert.deepEqual(validateBackup({format:'bug-book',version:1,logs:[chosen(7,'evening')]}),[chosen(7,'evening')]);
 });
