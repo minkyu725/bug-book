@@ -5,7 +5,7 @@ const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&am
 export function initReflections({getDB, onChange, onOpen, toast}) {
   const $ = selector => document.querySelector(selector);
   let records = [], slot = currentSlot(), selectedDay = reflectionDay(), busy = false, followsClock = true;
-  let draftQueue = Promise.resolve(), draftTimer;
+  let draftQueue = Promise.resolve(), draftTimer, clockDay = reflectionDay();
   const drafts = new Map(), dirtyDrafts = new Set();
   const key = () => `${selectedDay}:${slot}`;
   const question = () => answerFor()?.reflection || drafts.get(key())?.question || questionFor(selectedDay, slot);
@@ -175,7 +175,9 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   const tick = async () => {
     const day = reflectionDay(), nextSlot = currentSlot(), value = $('#reflection-answer').value;
     const changed = day !== selectedDay || nextSlot !== slot;
-    if (followsClock && !busy && changed && (!value.trim() || value === answerFor()?.raw)) await switchAnswer(day, nextSlot);
+    const newDay = day !== clockDay;
+    clockDay = day;
+    if ((followsClock || newDay) && !busy && changed && (!value.trim() || value === answerFor()?.raw)) await switchAnswer(day, nextSlot);
     $('#reflection-new-day').hidden = selectedDay === day;
     showDue();
   };

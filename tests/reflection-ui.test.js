@@ -58,6 +58,10 @@ test('미리 답하기, 05:30 경계, 재실행 초안 복구와 이전 초안 �
     await h.$('#reflection-form').onsubmit({preventDefault(){}});
     assert.equal((await readAll(db)).logs.find(log=>log.reflection.slot==='morning').reflection.day,'2026-11-18');
     assert.ok(!(await readReflectionDrafts(db)).some(d=>d.day==='2026-11-18'));
+    await h.buttons[1].onclick();
+    now='2026-11-19T20:30:00Z'; await h.controller.refresh();
+    assert.match(h.$('#reflection-date').textContent,/2026-11-20/,'미리보기로 수동 선택했어도 다음 05:30에는 갱신');
+    assert.equal(h.$('#reflection-answer').value,'');
   } finally {
     db.close(); globalThis.Date=OriginalDate; globalThis.setInterval=originalInterval;
     globalThis.document=previousDocument;globalThis.window=previousWindow;
