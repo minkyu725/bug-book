@@ -97,6 +97,13 @@ export function choiceQuestions(slot) {
     question:focusedQuestions[id].question,
     context:[focusedQuestions[id].helper, '오늘 또는 최근의 구체적인 장면 하나를 근거로 적어주세요. 떠오르지 않으면 ‘아직 관찰하지 못함’이라고 남겨도 괜찮아요.'].filter(Boolean).join(' ')}));
 }
+// Sunday through Saturday; the reflection day still changes at 05:30 Seoul time.
+export const WEEKDAY_PAIRS = [[2,5],[4,7],[12,11],[13,15],[16,20],[17,22],[1,3]];
+export function suggestedQuestion(day, slot) {
+  const weekday = new Date(day + 'T00:00:00Z').getUTCDay();
+  const id = WEEKDAY_PAIRS[weekday][slot === 'morning' ? 0 : 1];
+  return choiceQuestions(slot).find(q => q.questionId === id);
+}
 export function choiceStats(logs, slot) {
   const answers = logs.filter(log => log.reflection?.type === 'answer' && log.reflection.choiceVersion === 1 && log.reflection.slot === slot && CHOICE_POOLS[slot].includes(log.reflection.questionId));
   return choiceQuestions(slot).map(q => {
@@ -135,7 +142,7 @@ export function questionFor(day, slot) {
 export function dueReflection(logs, date = new Date()) {
   const slot = currentSlot(date), day = reflectionDay(date);
   if (!slot || logs.some(log => log.reflection?.type === 'answer' && log.reflection.day === day && log.reflection.slot === slot)) return null;
-  return {day, slot, ...questionFor(day, slot), question:'7개 질문 중 오늘 답하고 싶은 질문 하나를 선택해 주세요.'};
+  return {day, slot, ...suggestedQuestion(day, slot)};
 }
 export function reflectionGroups(logs) {
   const answers = logs.filter(log => log.reflection?.type === 'answer').sort((a,b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));

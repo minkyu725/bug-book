@@ -442,7 +442,7 @@ if ('serviceWorker' in navigator) {
   try {
     const registration = await navigator.serviceWorker.register('./sw.js', {updateViaCache: 'none'});
     const ready = await navigator.serviceWorker.ready;
-    const cacheReady = await caches.has(`bug-book-shell:${ready.scope}:v10`);
+    const cacheReady = await caches.has(`bug-book-shell:${ready.scope}:v11`);
     $('#offline').textContent = cacheReady ? '✓ 오프라인 준비 완료 · 인터넷 없이 기록할 수 있어요.' : '앱 업데이트 준비 중입니다. 모든 버그 북 창을 닫고 다시 열어 주세요.';
     function notifyUpdate() {
       if (registration.waiting) { $('#update-panel').hidden = false; $('#offline').textContent = '새 버전이 준비되었습니다. 초안은 자동 보관됩니다. 모든 버그 북 창을 닫고 다시 열어 적용하세요.'; }

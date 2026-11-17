@@ -1,5 +1,5 @@
 import {readAll, transaction, readReflectionDrafts, saveReflectionAnswer} from './storage.js';
-import {OTHER_QUESTIONS, choiceQuestions, choiceStats, questionFor, seoulDay, reflectionDay, currentSlot, reflectionGroups, dueReflection} from './reflection-core.js';
+import {OTHER_QUESTIONS, choiceQuestions, choiceStats, suggestedQuestion, questionFor, seoulDay, reflectionDay, currentSlot, reflectionGroups, dueReflection} from './reflection-core.js';
 
 const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 export function initReflections({getDB, onChange, onOpen, toast}) {
@@ -9,7 +9,7 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   const selections = new Map();
   const drafts = new Map(), dirtyDrafts = new Set();
   const key = () => `${selectedDay}:${slot}`;
-  const question = () => selections.get(key()) || drafts.get(key())?.question || answerFor()?.reflection || (drafts.get(key())?.text ? questionFor(selectedDay, slot) : null);
+  const question = () => selections.get(key()) || drafts.get(key())?.question || answerFor()?.reflection || (drafts.get(key())?.text ? questionFor(selectedDay, slot) : suggestedQuestion(selectedDay, slot));
   const answerFor = () => records.find(log => log.reflection?.type === 'answer' && log.reflection.day === selectedDay && log.reflection.slot === slot);
   async function read() {
     const db = getDB();
@@ -44,7 +44,7 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   function renderChoices(selected) {
     const stats = choiceStats(records, slot);
     $('#reflection-choices').innerHTML = stats.map(q => `<label class="reflection-choice"><input type="radio" name="reflection-choice" value="${q.questionId}" ${selected?.questionId === q.questionId ? 'checked' : ''} ${busy ? 'disabled' : ''}><span><strong>${q.questionId}번 · ${escapeHTML(q.theme)}</strong><span class="choice-text">${escapeHTML(q.question)}</span><span class="choice-stats"><progress max="100" value="${q.percent}" aria-label="${q.questionId}번 답변 비중"></progress><small>${q.count ? `${q.count}회 · ${q.percent}%` : '아직 답변 없음'}</small></span></span></label>`).join('');
-    $('#reflection-choice-hint').textContent = `${slot === 'morning' ? '오전' : '오후'} 7개 중 하나를 선택하세요. 비중은 선택형으로 저장한 이 시간대 답변을 기준으로 하며, 수정은 횟수를 늘리지 않아요.`;
+    $('#reflection-choice-hint').textContent = `기본 질문 대신 답하고 싶은 질문이 있다면 선택하세요. 비중은 선택형으로 저장한 이 시간대 답변을 기준으로 하며, 수정은 횟수를 늘리지 않아요.`;
   }
   $('#reflection-choices').onchange = async event => {
     const q = choiceQuestions(slot).find(q => q.questionId === Number(event.target.value));
@@ -56,6 +56,7 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     drafts.set(key(), {text:'', question:q, updatedAt:new Date().toISOString()});
     dirtyDrafts.add(key());
     // An empty draft still carries the selected question during this session.
+    $('#reflection-choice-picker').open = false;
     render(true);
   };
   function renderDrafts() {
@@ -116,6 +117,7 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     await persistDraft();
     if (manual) followsClock = false;
     selectedDay = day; slot = nextSlot;
+    $('#reflection-choice-picker').open = false;
     render(true);
   }
   $('#reflection-answer').oninput = () => { drafts.set(key(), {text:$('#reflection-answer').value, question:question(), updatedAt:new Date().toISOString()}); renderDrafts(); dirtyDrafts.add(key()); clearTimeout(draftTimer); draftTimer = setTimeout(persistDraft, 350); };

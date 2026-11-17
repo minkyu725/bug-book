@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {IDBFactory} from 'fake-indexeddb';
-import {CHOICE_POOLS, choiceQuestions, choiceStats, QUESTIONS, seoulDay, reflectionDay, currentSlot, questionFor, reflectionGroups, validateReflection, dueReflection} from '../reflection-core.js';
+import {suggestedQuestion, CHOICE_POOLS, choiceQuestions, choiceStats, QUESTIONS, seoulDay, reflectionDay, currentSlot, questionFor, reflectionGroups, validateReflection, dueReflection} from '../reflection-core.js';
 import {validateBackup} from '../core.js';
 import {openDatabase, transaction, readAll, mergeLogs, writeDraft} from '../storage.js';
 
@@ -34,8 +34,8 @@ test('11월 17일부터 선정한 원문 질문을 오전·오후 5일 주기로
   assert.equal(questionFor('2026-11-17','morning').question, '당신 안에는 어떤 인코딩(내면의 작동 방식)이 숨어 있는가? 당신을 잘 아는 사람들은 무엇을 당신의 인코딩이라고 생각하는가?');
   assert.match(questionFor('2026-11-18','evening').context,/막혀 있던 일을/);
   assert.match(questionFor('2026-11-19','evening').context,/다시 하고 싶었던/);
-  assert.equal(dueReflection([],new Date('2026-11-17T00:30:00Z')).questionId,2);
-  assert.equal(dueReflection([],new Date('2026-11-17T10:30:00Z')).questionId,3);
+  assert.equal(dueReflection([],new Date('2026-11-17T00:30:00Z')).questionId,12);
+  assert.equal(dueReflection([],new Date('2026-11-17T10:30:00Z')).questionId,11);
 });
 test('회고는 저장된 답변만 날짜순으로 7개씩 묶고 피드백·회고는 세지 않는다', () => {
   const records = Array.from({length:15},(_,i)=>answer(i)).reverse();
@@ -104,4 +104,14 @@ test('선택형 14개 문구와 시간대별 비중은 기존 기록과 분리�
   assert.equal(choiceStats(logs,'evening').find(q=>q.questionId===7).percent,100);
   assert.ok(choiceStats([],'morning').every(q=>q.count===0 && q.percent===0));
   assert.deepEqual(validateBackup({format:'bug-book',version:1,logs:[chosen(7,'evening')]}),[chosen(7,'evening')]);
+});
+
+test('요일별 기본 질문은 화요일 12·11, 수요일 13·15이며 매주 반복한다', () => {
+  const expected = [[12,11],[13,15],[16,20],[17,22],[1,3],[2,5],[4,7]];
+  for(let i=0;i<14;i++) {
+    const day = new Date(Date.UTC(2026,10,17+i)).toISOString().slice(0,10);
+    assert.deepEqual(['morning','evening'].map(slot=>suggestedQuestion(day,slot).questionId),expected[i%7]);
+  }
+  assert.equal(dueReflection([],new Date('2026-11-18T00:00:00Z')).questionId,13);
+  assert.equal(dueReflection([],new Date('2026-11-18T09:00:00Z')).questionId,15);
 });

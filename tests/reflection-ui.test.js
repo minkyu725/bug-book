@@ -31,7 +31,7 @@ test('미리 답하기, 05:30 경계, 재실행 초안 복구와 이전 초안 �
     await h.$('#reflection-show-current').onclick();
     assert.match(h.$('#reflection-date').textContent,/2026-11-18/);
     await h.buttons[1].onclick();
-    assert.equal(h.$('#reflection-form').hidden,true,'질문 선택 전에는 답변 입력을 숨긴다');
+    assert.equal(h.$('#reflection-form').hidden,false,'기본 질문에 바로 답변할 수 있다');
     await h.$('#reflection-choices').onchange({target:{value:'7'}});
     assert.equal(h.$('#reflection-form').hidden,false,'오전에도 오후 질문을 선택해 미리 작성 가능');
     type(h,'미리 쓴 오후 답변');
