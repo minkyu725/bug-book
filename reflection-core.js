@@ -79,11 +79,15 @@ const order = [2, 7, 5, 13, 17, 3, 1, 4, 6, 9, 10, 8, 11, 12, 14, 15, 16, 18, 19
 export function seoulDay(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit'}).format(date);
 }
+// Shift the calendar by 5h30m so each reflection day starts at 05:30 in Seoul.
+export function reflectionDay(date = new Date()) {
+  return seoulDay(new Date(date.getTime() - 330 * 60000));
+}
 export function currentSlot(date = new Date()) {
   const hour = Number(new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Seoul', hour:'2-digit', hourCycle:'h23'}).format(date));
   const minute = Number(new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Seoul', minute:'2-digit'}).format(date));
   const minutes = hour * 60 + minute;
-  return minutes >= 19 * 60 + 30 ? 'evening' : minutes >= 9 * 60 + 30 ? 'morning' : null;
+  return minutes >= 17 * 60 + 30 || minutes < 5 * 60 + 30 ? 'evening' : 'morning';
 }
 export function questionFor(day, slot) {
   const index = Math.floor(Date.parse(day + 'T00:00:00Z') / 86400000);
@@ -100,7 +104,7 @@ export function questionFor(day, slot) {
 }
 // Only today's latest available question is due; skipped days never form a backlog.
 export function dueReflection(logs, date = new Date()) {
-  const slot = currentSlot(date), day = seoulDay(date);
+  const slot = currentSlot(date), day = reflectionDay(date);
   if (!slot || logs.some(log => log.reflection?.type === 'answer' && log.reflection.day === day && log.reflection.slot === slot)) return null;
   return {day, slot, ...questionFor(day, slot)};
 }

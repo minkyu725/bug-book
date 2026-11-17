@@ -105,3 +105,29 @@ export function mergeLogs(db, logs) {
     }
   });
 }
+
+export function readReflectionDrafts(db) {
+  return transaction(db, ['meta'], 'readonly', (tx, output) => {
+    const drafts = [];
+    tx.objectStore('meta').openCursor().onsuccess = event => {
+      const cursor = event.target.result;
+      if (!cursor) { output(drafts); return; }
+      const match = /^reflection-draft:(\d{4}-\d{2}-\d{2}):(morning|evening)$/.exec(String(cursor.key));
+      if (match) {
+        const value = cursor.value;
+        const text = typeof value === 'string' ? value : value?.text;
+        if (typeof text === 'string' && text.trim()) drafts.push({day:match[1], slot:match[2], text,
+          question:typeof value === 'object' ? value.question : null,
+          updatedAt:typeof value === 'object' ? value.updatedAt : `${match[1]}T${match[2] === 'morning' ? '05' : '17'}:30:00+09:00`});
+      }
+      cursor.continue();
+    };
+  });
+}
+
+export function saveReflectionAnswer(db, log) {
+  return transaction(db, ['logs', 'meta'], 'readwrite', tx => {
+    tx.objectStore('logs').put(log);
+    tx.objectStore('meta').delete(`reflection-draft:${log.reflection.day}:${log.reflection.slot}`);
+  });
+}

@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {IDBFactory} from 'fake-indexeddb';
-import {QUESTIONS, seoulDay, currentSlot, questionFor, reflectionGroups, validateReflection, dueReflection} from '../reflection-core.js';
+import {QUESTIONS, seoulDay, reflectionDay, currentSlot, questionFor, reflectionGroups, validateReflection, dueReflection} from '../reflection-core.js';
 import {validateBackup} from '../core.js';
 import {openDatabase, transaction, readAll, mergeLogs, writeDraft} from '../storage.js';
 
 const answer = (i = 0) => ({id:`answer-${i}`, date:new Date(Date.UTC(2026,10,1,i)).toISOString(), energy:0,tags:['고유한 방식'],context:'구체적인 장면은?',raw:`답변 ${i}`,trigger:'',hypothesis:'',audio:null,
   reflection:{type:'answer',day:'2026-11-01',slot:i % 2 ? 'evening':'morning',questionId:2,question:'구체적인 장면은?'}});
-test('한국 시간의 자정과 저녁 19:30 경계에서 날짜와 질문을 고른다', () => {
+test('한국 시간의 날짜와 오후 17:30 경계에서 기본 질문을 고른다', () => {
   assert.equal(seoulDay(new Date('2026-11-12T15:00:00Z')), '2026-11-13');
-  assert.equal(currentSlot(new Date('2026-11-13T10:29:59Z')), 'morning');
-  assert.equal(currentSlot(new Date('2026-11-13T10:30:00Z')), 'evening');
+  assert.equal(currentSlot(new Date('2026-11-13T08:29:59Z')), 'morning');
+  assert.equal(currentSlot(new Date('2026-11-13T08:30:00Z')), 'evening');
 });
 test('23개 질문을 순환하며 하루 두 질문이 다르고 같은 날짜의 질문은 안정적이다', () => {
   assert.equal(QUESTIONS.length, 23);
@@ -67,11 +67,20 @@ test('자기이해 저장은 기존 관찰 초안을 유지하고 백업 병합�
   assert.equal(state.logs.length,2);assert.equal(state.logs[1].reflection.type,'answer');
   db.close();
 });
-test('오전 9:30 이전에는 질문을 안내하지 않고 경계 시각부터 안내한다', () => {
-  assert.equal(currentSlot(new Date('2026-11-13T00:29:59Z')), null);
-  assert.equal(dueReflection([], new Date('2026-11-13T00:29:59Z')), null);
-  assert.equal(dueReflection([], new Date('2026-11-13T00:30:00Z')).slot, 'morning');
-  assert.equal(dueReflection([], new Date('2026-11-13T10:30:00Z')).slot, 'evening');
+test('질문 하루는 한국 시간 05:30에만 바뀌고 17:30에는 기본 시간대만 바뀐다', () => {
+  for (const [instant, day, slot] of [
+    ['2026-11-17T20:29:59Z','2026-11-17','evening'],
+    ['2026-11-17T20:30:00Z','2026-11-18','morning'],
+    ['2026-11-18T08:29:59Z','2026-11-18','morning'],
+    ['2026-11-18T08:30:00Z','2026-11-18','evening'],
+    ['2026-11-18T15:00:00Z','2026-11-18','evening'],
+    ['2026-11-18T20:29:59Z','2026-11-18','evening'],
+    ['2026-11-18T20:30:00Z','2026-11-19','morning']]) {
+    const date = new Date(instant), due = dueReflection([],date);
+    assert.equal(reflectionDay(date),day); assert.equal(currentSlot(date),slot);
+    assert.equal(due.day,day); assert.equal(due.slot,slot);
+    assert.deepEqual(questionFor(day,'morning'),questionFor(reflectionDay(date),'morning'));
+  }
 });
 test('답한 질문은 다시 안내하지 않으며 저녁에는 최신 질문만 보여준다', () => {
   const morning = {...answer(), reflection:{...answer().reflection, day:'2026-11-13',slot:'morning'}};
@@ -80,5 +89,5 @@ test('답한 질문은 다시 안내하지 않으며 저녁에는 최신 질문�
   assert.equal(dueReflection([morning], new Date('2026-11-13T11:00:00Z')).slot, 'evening');
   assert.equal(dueReflection([evening], new Date('2026-11-13T11:00:00Z')), null);
   assert.equal(dueReflection([morning,evening], new Date('2026-11-14T01:00:00Z')).day, '2026-11-14');
-  assert.equal(dueReflection([], new Date('2026-11-14T00:00:00Z')), null);
+  assert.equal(dueReflection([], new Date('2026-11-14T00:00:00Z')).day, '2026-11-14');
 });
