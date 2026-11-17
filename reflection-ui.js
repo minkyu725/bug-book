@@ -6,11 +6,16 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   const $ = selector => document.querySelector(selector);
   let records = [], slot = currentSlot(), selectedDay = reflectionDay(), busy = false, followsClock = true;
   let draftQueue = Promise.resolve(), draftTimer, clockDay = reflectionDay();
-  const selections = new Map();
+  const selections = new Map(), editing = new Map();
   const drafts = new Map(), dirtyDrafts = new Set();
   const key = () => `${selectedDay}:${slot}`;
+  const slotAnswers = () => records.filter(log => log.reflection?.type === 'answer' && log.reflection.day === selectedDay && log.reflection.slot === slot);
+  const answerFor = () => {
+    const id = editing.has(key()) ? editing.get(key()) : drafts.get(key())?.editId;
+    return id ? records.find(log => log.id === id) : null;
+  };
+  const isWriting = () => editing.has(key()) || drafts.has(key()) || !slotAnswers().length;
   const question = () => selections.get(key()) || drafts.get(key())?.question || answerFor()?.reflection || (drafts.get(key())?.text ? questionFor(selectedDay, slot) : suggestedQuestion(selectedDay, slot));
-  const answerFor = () => records.find(log => log.reflection?.type === 'answer' && log.reflection.day === selectedDay && log.reflection.slot === slot);
   async function read() {
     const db = getDB();
     if (!db) { $('#reflection-status').textContent = '저장소에 연결할 수 없어 답변을 저장할 수 없습니다.'; return; }
@@ -23,8 +28,14 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     showDue();
     $('#reflection-new-day').hidden = selectedDay === reflectionDay();
     const answer = answerFor(), q = question();
+    const writing = isWriting();
+    $('#reflection-complete').hidden = writing;
+    $('#reflection-question').hidden = !writing;
+    $('#reflection-source').hidden = !writing;
+    $('#reflection-choice-picker').hidden = !writing || Boolean(answer);
     renderChoices(q);
-    $('#reflection-form').hidden = !q;
+    renderComplete();
+    $('#reflection-form').hidden = !q || !writing;
     $('#reflection-waiting').hidden = true;
     $('#reflection-date').textContent = `${selectedDay} · 한국 시간`;
     document.querySelectorAll('[data-slot]').forEach(button => {
@@ -32,17 +43,40 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
       button.setAttribute('aria-pressed', String(button.dataset.slot === slot));
     });
     $('#reflection-question').textContent = q?.question || '오늘 답할 질문을 선택해 주세요.';
-    $('#reflection-source').hidden = false;
+    $('#reflection-source').hidden = !writing;
     $('#reflection-source').textContent = `질문 ${q?.questionId || '선택 전'} · ${answer?.tags[0] || q?.theme || '자기이해'} · ${q?.context || '이전에 남긴 답변을 수정할 수 있어요.'}`;
-    if (forceAnswer || document.activeElement !== $('#reflection-answer')) $('#reflection-answer').value = drafts.get(key())?.text ?? answer?.raw ?? '';
+    if (forceAnswer || document.activeElement !== $('#reflection-answer')) $('#reflection-answer').value = writing ? (drafts.get(key())?.text ?? answer?.raw ?? '') : '';
     $('#reflection-save').textContent = answer ? '답변 수정 저장' : '답변 저장';
     $('#reflection-save').disabled = !getDB();
     const answers = records.filter(log => log.reflection.type === 'answer');
     $('#reflection-progress').textContent = `답변 ${answers.length}개 · 다음 회고까지 ${7 - answers.length % 7}개. 건너뛴 날은 채우지 않아도 괜찮아요.`;
     renderDrafts(); renderReviews(); renderHistory();
   }
+  function renderComplete() {
+    const answers = slotAnswers();
+    $('#reflection-complete').innerHTML = `<h2>${selectedDay} ${slot === 'morning' ? '오전' : '오후'} 답변을 저장했어요</h2><p class="hint">${answers.length}개 답변 완료 · 저장한 답변은 아래에서 다시 볼 수 있어요.</p><button id="reflection-add-answer" type="button" ${answers.filter(a => choiceQuestions(slot).some(q => q.questionId === a.reflection.questionId)).length >= 7 ? 'disabled' : ''}>다른 질문 추가로 답변하기</button><h3>저장한 답변</h3>${answers.map(log => `<article class="reflection-entry"><h3>${log.reflection.questionId}번 · ${escapeHTML(log.reflection.question)}</h3><details><summary>답변 보기</summary><p>${escapeHTML(log.raw)}</p></details><button type="button" data-edit-complete="${escapeHTML(log.id)}">답변 수정</button></article>`).join('')}`;
+  }
+  async function editAnswer(log) {
+    await switchAnswer(log.reflection.day, log.reflection.slot, true);
+    editing.set(key(), log.id);
+    if (!drafts.get(key())?.text) {
+      selections.set(key(), {...log.reflection, theme:log.tags[0]});
+      drafts.set(key(), {text:log.raw, question:selections.get(key()), editId:log.id, updatedAt:new Date().toISOString()});
+    }
+    render(true); $('#reflection-answer').focus();
+  }
+  $('#reflection-complete').onclick = async event => {
+    const edit = event.target.closest('[data-edit-complete]');
+    if (busy) return;
+    if (edit) { const log = records.find(log => log.id === edit.dataset.editComplete); if (log) await editAnswer(log); return; }
+    if (!event.target.closest('#reflection-add-answer')) return;
+    const q = choiceQuestions(slot).find(q => !slotAnswers().some(log => log.reflection.questionId === q.questionId));
+    if (!q) return;
+    editing.set(key(), null); selections.set(key(), q);
+    render(true); $('#reflection-choice-picker').open = true; $('#reflection-answer').focus();
+  };
   function renderChoices(selected) {
-    const stats = choiceStats(records, slot);
+    const stats = choiceStats(records, slot).filter(q => answerFor() || !slotAnswers().some(log => log.reflection.questionId === q.questionId));
     $('#reflection-choices').innerHTML = stats.map(q => `<label class="reflection-choice"><input type="radio" name="reflection-choice" value="${q.questionId}" ${selected?.questionId === q.questionId ? 'checked' : ''} ${busy ? 'disabled' : ''}><span><strong>${q.questionId}번 · ${escapeHTML(q.theme)}</strong><span class="choice-text">${escapeHTML(q.question)}</span><span class="choice-stats"><progress max="100" value="${q.percent}" aria-label="${q.questionId}번 답변 비중"></progress><small>${q.count ? `${q.count}회 · ${q.percent}%` : '아직 답변 없음'}</small></span></span></label>`).join('');
     $('#reflection-choice-hint').textContent = `기본 질문 대신 답하고 싶은 질문이 있다면 선택하세요. 비중은 선택형으로 저장한 이 시간대 답변을 기준으로 하며, 수정은 횟수를 늘리지 않아요.`;
   }
@@ -62,6 +96,7 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   function renderDrafts() {
     const pending = [...drafts.entries()].filter(([draftKey, draft]) => draft.text.trim() && !records.some(log => log.reflection?.type === 'answer' && `${log.reflection.day}:${log.reflection.slot}` === draftKey && log.raw === draft.text.trim()))
       .sort((a,b) => Date.parse(b[1].updatedAt) - Date.parse(a[1].updatedAt));
+    $('#reflection-drafts-panel').hidden = !pending.length;
     $('#reflection-drafts').innerHTML = pending.length ? pending.map(([draftKey,draft]) => `<article class="reflection-entry"><h3>${escapeHTML(draftKey.slice(0,10))} · ${draftKey.endsWith('morning') ? '오전' : '오후'} 초안</h3><p>${escapeHTML(draft.text.slice(0,120))}</p><button type="button" data-resume-draft="${escapeHTML(draftKey)}">작성하던 답변 이어쓰기</button></article>`).join('') : '<p class="hint">작성 중인 초안이 없습니다. 답변을 쓰면 여기에 보관됩니다.</p>';
   }
   function renderReviews() {
@@ -120,17 +155,18 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     $('#reflection-choice-picker').open = false;
     render(true);
   }
-  $('#reflection-answer').oninput = () => { drafts.set(key(), {text:$('#reflection-answer').value, question:question(), updatedAt:new Date().toISOString()}); renderDrafts(); dirtyDrafts.add(key()); clearTimeout(draftTimer); draftTimer = setTimeout(persistDraft, 350); };
+  $('#reflection-answer').oninput = () => { drafts.set(key(), {text:$('#reflection-answer').value, question:question(), editId:answerFor()?.id || null, updatedAt:new Date().toISOString()}); renderDrafts(); dirtyDrafts.add(key()); clearTimeout(draftTimer); draftTimer = setTimeout(persistDraft, 350); };
   document.querySelectorAll('[data-slot]').forEach(button => { button.onclick = () => switchAnswer(reflectionDay(), button.dataset.slot, true); });
   $('#reflection-form').onsubmit = async event => {
     event.preventDefault();
     const raw = $('#reflection-answer').value.trim();
-    if (!raw || busy || !question()) return;
+    if (!raw || busy || !question() || !isWriting()) return;
     const existing = answerFor(), q = question();
     await persistDraft();
-    const saved = await write(logFor({id:existing?.id || `reflection:${selectedDay}:${slot}`, date:existing?.date, raw, context:q.question, theme:q.theme || existing?.tags[0],
+    const saved = await write(logFor({id:existing?.id || crypto.randomUUID(), date:existing?.date, raw, context:q.question, theme:q.theme || existing?.tags[0],
       reflection:{type:'answer', day:selectedDay, slot, questionId:q.questionId, question:q.question, ...((selections.has(key()) || !existing || existing.reflection.choiceVersion === 1) ? {choiceVersion:1} : {})}}));
     if (saved) {
+      editing.delete(key());
       selections.delete(key());
       drafts.delete(key());
       dirtyDrafts.delete(key());
@@ -152,7 +188,7 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
     const edit = event.target.closest('[data-open-answer]'), remove = event.target.closest('[data-remove-reflection]');
     if (edit) {
       const log = records.find(item => item.id === edit.dataset.openAnswer);
-      await switchAnswer(log.reflection.day, log.reflection.slot, true); $('#reflection-answer').focus();
+      await editAnswer(log);
     }
     if (remove && !busy && getDB() && confirm('이 자기이해 기록을 삭제할까요? 삭제한 기록은 되돌릴 수 없습니다.')) {
       try { await transaction(getDB(), ['logs'], 'readwrite', tx => tx.objectStore('logs').delete(remove.dataset.removeReflection)); onChange(); await read(); toast('기록을 삭제했어요.'); }
@@ -206,9 +242,14 @@ export function initReflections({getDB, onChange, onOpen, toast}) {
   setInterval(() => tick().catch(() => toast('질문 시간을 확인하지 못했어요.')), 60000);
   async function start() {
     const savedDrafts = await readReflectionDrafts(getDB());
-    savedDrafts.forEach(draft => drafts.set(`${draft.day}:${draft.slot}`, draft));
     await read();
-    const pending = savedDrafts.filter(draft => !records.some(log => log.reflection?.type === 'answer' && log.reflection.day === draft.day && log.reflection.slot === draft.slot && log.raw === draft.text.trim()))
+    const matchesSaved = draft => records.some(log => log.reflection?.type === 'answer' && log.reflection.day === draft.day && log.reflection.slot === draft.slot && (!draft.question || log.reflection.questionId === draft.question.questionId) && log.raw === draft.text.trim());
+    for (const draft of savedDrafts) {
+      if (matchesSaved(draft)) {
+        await transaction(getDB(), ['meta'], 'readwrite', tx => tx.objectStore('meta').delete(`reflection-draft:${draft.day}:${draft.slot}`));
+      } else drafts.set(`${draft.day}:${draft.slot}`, draft);
+    }
+    const pending = savedDrafts.filter(draft => !matchesSaved(draft))
       .sort((a,b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
     if (pending.length) await switchAnswer(pending[0].day, pending[0].slot, true);
     else render(true);

@@ -118,6 +118,7 @@ export function readReflectionDrafts(db) {
         const text = typeof value === 'string' ? value : value?.text;
         if (typeof text === 'string' && text.trim()) drafts.push({day:match[1], slot:match[2], text,
           question:typeof value === 'object' ? value.question : null,
+          editId:typeof value === 'object' && typeof value.editId === 'string' ? value.editId : null,
           updatedAt:typeof value === 'object' ? value.updatedAt : `${match[1]}T${match[2] === 'morning' ? '05' : '17'}:30:00+09:00`});
       }
       cursor.continue();
